@@ -9,7 +9,7 @@
 #import "Socket.h"
 
 #import <CFNetwork/CFNetwork.h>
-
+#import <zlib.h>
 //#define isBigEndian \
 //({ \
 //    BOOL flag = NO; \
@@ -58,6 +58,28 @@
 
 #define BigSwapLittle16(A)      (A) = ((((uint16)(A) & 0xff00) >> 8) | \
 (((uint16)(A) & 0x00ff) << 8))
+
+
+//#define MOD 65521
+//#define MAX 5552
+//
+//unsigned long adler32(unsigned char *buf, size_t len)
+//{
+//    unsigned long a = 1, b = 0;
+//    size_t n;
+//
+//    while (len) {
+//        n = len > MAX ? MAX : len;
+//        len -= n;
+//        do {
+//            a += *buf++;
+//            b += a;
+//        } while (--n);
+//        a %= MOD;
+//        b %= MOD;
+//    }
+//    return a | (b << 16);
+//}
 
 @interface Socket ()<NSStreamDelegate>
 @property (nonatomic, strong) NSInputStream *readStream;
@@ -153,11 +175,18 @@
                 memcpy(&dataLen, buffer + 2, 2);
                 // 服务器传输数据 为 大端 网络字节序, 当设备为 小端字节序 则需要将大端转为小端
                 if (!(NSHostByteOrder() == NS_BigEndian)) { dataLen = NSSwapBigShortToHost(dataLen); }
-                NSLog(@"dataLen: %d", dataLen);
                 // 读取数据内容
+                uint32 checksum = 0;
+                memcpy(&checksum, buffer + 4, 4);
+                if (!(NSHostByteOrder() == NS_BigEndian)) { checksum = NSSwapBigIntToHost(checksum); }
                 char contentBuffer[dataLen];
-                memcpy(contentBuffer, buffer + 4, dataLen+1);
-                NSLog(@"content: %s", contentBuffer);
+                memcpy(contentBuffer, buffer + 8, dataLen+1);
+                uint32 verifyChecksum = (uint32)adler32(1, (const void *)contentBuffer, dataLen);
+                if (verifyChecksum == checksum) {
+                    NSLog(@"数据校验成功 content: %@", [NSString stringWithCString:contentBuffer encoding:NSUTF8StringEncoding]);
+                } else {
+                    NSLog(@"数据校验失败");
+                }
             }
             break;
         }
@@ -224,15 +253,16 @@
 {
     NSMutableData * senddata = [NSMutableData new];
     NSString *header = @"V1";
-    NSString *content = @"字节转卡积分卡辣椒粉控件阿卡丽很费劲啊看来发货卡夫卡拉横幅马甲本菲卡加班费可能麻痹九分裤垃圾不付款啦被罚款喇叭那几款卡饿了开发加班费解放军阿卡丽金卡节疯狂拉黑卡尔付款啦加快了福建阿来划分就爱咖啡酒吧老板发了不放卡接口里发不发腊八节福利卡被封了卡被封了卡不放辣被封了卡被封了卡办法不付款啦咖啡酒吧看两部分";
+    NSString *content = @",麻烦啦九分裤男安居办法链接啊杯咖啡吧卡了被罚款分布筋阿附近吧家而非金坷垃过节费卡不发酵";
     NSData *data = [content dataUsingEncoding:NSUTF8StringEncoding allowLossyConversion:NO];
-    int16_t len = data.length;
+    int16_t len = (int16_t)data.length;
     [senddata appendData:[header dataUsingEncoding:NSUTF8StringEncoding allowLossyConversion:NO]];
-//    HTONS(len);
     len = NSSwapHostShortToBig(len);
     [senddata appendBytes:&len length:sizeof(len)];
+    uint32 adler = (uint32)adler32(1, data.bytes, (uInt)data.length);
+    adler = NSSwapHostIntToBig(adler);
+    [senddata appendBytes:&adler length:sizeof(adler)];
     [senddata appendData:data];
-
     return senddata;
 }
 @end

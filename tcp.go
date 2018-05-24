@@ -5,28 +5,31 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"hash/adler32"
 	"io"
-	"net"
 	"log"
-	"time"
+	"net"
 	"os"
+	"time"
 )
 
 // 自定义协议的组包和拆包
 type Packet struct {
-	Version [2]byte
-	Length int16
-	Data    []byte
+	Version  [2]byte
+	Length   int16
+	Checksum uint32
+	Data     []byte
 }
 
 func (p *Packet) String() string {
-	return fmt.Sprintf("Version: %v Length: %d Data: %s",
-		string(p.Version[:]), p.Length, string(p.Data))
+	return fmt.Sprintf("Version: %v Length: %d Data: %s Checksum: %v",
+		string(p.Version[:]), p.Length, string(p.Data), p.Checksum)
 }
 
 func (p *Packet) Pack(w io.Writer) {
 	binary.Write(w, binary.BigEndian, p.Version)
 	binary.Write(w, binary.BigEndian, p.Length)
+	binary.Write(w, binary.BigEndian, p.Checksum)
 	binary.Write(w, binary.BigEndian, p.Data)
 }
 
@@ -36,17 +39,37 @@ func (p *Packet) Unpack(r io.Reader) {
 	if p.Length > 0 {
 		p.Data = make([]byte, p.Length)
 	}
+	binary.Read(r, binary.BigEndian, &p.Checksum)
 	binary.Read(r, binary.BigEndian, &p.Data)
+}
+
+// Verify verify checksum
+func (p *Packet) Verify() bool {
+	return p.Checksum == p.calcChecksum()
+}
+
+func (p *Packet) calcChecksum() uint32 {
+	if p == nil {
+		return 0
+	}
+
+	data := new(bytes.Buffer)
+	err := binary.Write(data, binary.BigEndian, p.Data)
+	if err != nil {
+		return 0
+	}
+	checksum := adler32.Checksum(data.Bytes())
+	return checksum
 }
 
 func main() {
 	go startServer()
 	//time.Sleep(time.Second * 5)
 	//connection()
-	select { }
+	select {}
 }
 
-func startServer()  {
+func startServer() {
 
 	listen, err := net.Listen("tcp", ":8800")
 	if err != nil {
@@ -64,14 +87,14 @@ func startServer()  {
 	}
 }
 
-func connection()  {
+func connection() {
 	conn, err := net.Dial("tcp", "127.0.0.1:8800")
 	if err != nil {
 		log.Fatal(err)
 		os.Exit(1)
 	}
 	fmt.Println("connection successful...")
-	defer  conn.Close()
+	defer conn.Close()
 	ticker := time.NewTicker(time.Second * 5)
 	idx := 0
 	for range ticker.C {
@@ -82,6 +105,7 @@ func connection()  {
 		packet.Version[1] = '1'
 		packet.Data = []byte(("index: " + fmt.Sprintf("%d ", idx) + "现在时间是:" + time.Now().Format("2006-01-02 15:04:05")))
 		packet.Length = int16(len(packet.Data))
+		packet.Checksum = packet.calcChecksum()
 		buf := new(bytes.Buffer)
 		packet.Pack(buf)
 		packet.Pack(buf)
@@ -120,15 +144,15 @@ func handleConn(conn net.Conn) {
 			packet.Version[0] = 'V'
 			packet.Version[1] = '1'
 			packet.Data = []byte("现在时间是:" + time.Now().Format("2006-01-02 15:04:05"))
-			//packet.Data = []byte("hello")
+			// packet.Data = []byte("hello")
 			packet.Length = int16(len(packet.Data))
+			packet.Checksum = packet.calcChecksum()
 			buf := new(bytes.Buffer)
 			packet.Pack(buf)
 			if _, err := conn.Write(buf.Bytes()); err != nil {
 				return
 			}
-			fmt.Println(conn.RemoteAddr().String() + "  ", packet.String())
-			fmt.Println(conn.RemoteAddr().String() + "  " + string(buf.Bytes()))
+			fmt.Println("发送:", conn.RemoteAddr().String()+"  ", packet.String())
 			time.Sleep(time.Second * 2)
 		}
 	}()
@@ -140,8 +164,8 @@ func handleConn(conn net.Conn) {
 			if len(data) > 4 {
 				var dataLen int16
 				binary.Read(bytes.NewReader(data[2:4]), binary.BigEndian, &dataLen)
-				if int(dataLen)+4 <= len(data) {
-					return int(dataLen) + 4, data[:int(dataLen)+4], nil
+				if int(dataLen)+8 <= len(data) {
+					return int(dataLen) + 8, data[:int(dataLen)+8], nil
 				}
 			}
 		}
@@ -153,7 +177,12 @@ func handleConn(conn net.Conn) {
 	for scanner.Scan() {
 		pac := new(Packet)
 		pac.Unpack(bytes.NewReader(scanner.Bytes()))
-		fmt.Println(pac)
+		fmt.Println("接受:", pac.String())
+		if pac.Verify() {
+			fmt.Println("接受:", "数据校验成功:")
+		} else {
+			fmt.Println("接受:", "数据校验失败....")
+		}
 	}
 	if err := scanner.Err(); err != nil {
 		fmt.Printf("Invalid input: %s", err)
