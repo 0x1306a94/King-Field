@@ -15,32 +15,34 @@ import (
 
 // 自定义协议的组包和拆包
 type Packet struct {
-	Version  [2]byte
-	Length   int16
-	Checksum uint32
-	Data     []byte
+	Version    [2]byte
+	DataLength int16
+	Checksum   uint32
+	Data       []byte
 }
 
 func (p *Packet) String() string {
-	return fmt.Sprintf("Version: %v Length: %d Data: %s Checksum: %v",
-		string(p.Version[:]), p.Length, string(p.Data), p.Checksum)
+	return fmt.Sprintf("Version: %v DataLength: %d Data: %s Checksum: %v",
+		string(p.Version[:]), p.DataLength, string(p.Data), p.Checksum)
 }
 
 func (p *Packet) Pack(w io.Writer) {
 	binary.Write(w, binary.BigEndian, p.Version)
-	binary.Write(w, binary.BigEndian, p.Length)
+	binary.Write(w, binary.BigEndian, p.DataLength)
 	binary.Write(w, binary.BigEndian, p.Checksum)
-	binary.Write(w, binary.BigEndian, p.Data)
+	w.Write(p.Data)
+	//binary.Write(w, binary.BigEndian, p.Data)
 }
 
 func (p *Packet) Unpack(r io.Reader) {
 	binary.Read(r, binary.BigEndian, &p.Version)
-	binary.Read(r, binary.BigEndian, &p.Length)
-	if p.Length > 0 {
-		p.Data = make([]byte, p.Length)
+	binary.Read(r, binary.BigEndian, &p.DataLength)
+	if p.DataLength > 0 {
+		p.Data = make([]byte, p.DataLength)
 	}
 	binary.Read(r, binary.BigEndian, &p.Checksum)
-	binary.Read(r, binary.BigEndian, &p.Data)
+	r.Read(p.Data)
+	//binary.Read(r, binary.BigEndian, &p.Data)
 }
 
 // Verify verify checksum
@@ -53,12 +55,12 @@ func (p *Packet) calcChecksum() uint32 {
 		return 0
 	}
 
-	data := new(bytes.Buffer)
-	err := binary.Write(data, binary.BigEndian, p.Data)
-	if err != nil {
-		return 0
-	}
-	checksum := adler32.Checksum(data.Bytes())
+	//dataBuffer := new(bytes.Buffer)
+	//err := binary.Write(dataBuffer, binary.BigEndian, p.Data)
+	//if err != nil {
+	//	return 0
+	//}
+	checksum := adler32.Checksum(p.Data)
 	return checksum
 }
 
@@ -104,7 +106,7 @@ func connection() {
 		packet.Version[0] = 'V'
 		packet.Version[1] = '1'
 		packet.Data = []byte(("index: " + fmt.Sprintf("%d ", idx) + "现在时间是:" + time.Now().Format("2006-01-02 15:04:05")))
-		packet.Length = int16(len(packet.Data))
+		packet.DataLength = int16(len(packet.Data))
 		packet.Checksum = packet.calcChecksum()
 		buf := new(bytes.Buffer)
 		packet.Pack(buf)
@@ -138,27 +140,28 @@ func handleConn(conn net.Conn) {
 		fmt.Println(conn.RemoteAddr().String() + " 断开")
 	}()
 
-	go func() {
-		for {
-			var packet Packet
-			packet.Version[0] = 'V'
-			packet.Version[1] = '1'
-			packet.Data = []byte("现在时间是:" + time.Now().Format("2006-01-02 15:04:05"))
-			// packet.Data = []byte("hello")
-			packet.Length = int16(len(packet.Data))
-			packet.Checksum = packet.calcChecksum()
-			buf := new(bytes.Buffer)
-			packet.Pack(buf)
-			if _, err := conn.Write(buf.Bytes()); err != nil {
-				return
-			}
-			fmt.Println("发送:", conn.RemoteAddr().String()+"  ", packet.String())
-			time.Sleep(time.Second * 2)
-		}
-	}()
+	//go func() {
+	//	for {
+	//		var packet Packet
+	//		packet.Version[0] = 'V'
+	//		packet.Version[1] = '1'
+	//		// packet.Data = []byte("现在时间是:" + time.Now().Format("2006-01-02 15:04:05"))
+	//		packet.Data = []byte("hello")
+	//		packet.Length = int16(len(packet.Data))
+	//		packet.Checksum = packet.calcChecksum()
+	//		buf := new(bytes.Buffer)
+	//		packet.Pack(buf)
+	//		if _, err := conn.Write(buf.Bytes()); err != nil {
+	//			return
+	//		}
+	//		fmt.Println("发送:", conn.RemoteAddr().String()+"  ", packet.String())
+	//		time.Sleep(time.Second * 2)
+	//	}
+	//}()
 	// 创建Scanner，分析buf数据流(r io.Reader，换成net.Conn对象就是处理tcp数据流，自己连数据都不需要去收取)
 	scanner := bufio.NewScanner(conn)
 	// 数据的分离规则，根据协议自定义
+	// 固定头 V1 (2字节) + data length (2字节 数据长度) + checksum (4字节 adler32 校验算法值) + data
 	split := func(data []byte, atEOF bool) (advance int, token []byte, err error) {
 		if !atEOF && data[0] == 'V' {
 			if len(data) > 4 {

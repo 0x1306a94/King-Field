@@ -10,6 +10,8 @@
 
 #import <CFNetwork/CFNetwork.h>
 #import <zlib.h>
+
+#import "Packet.h"
 //#define isBigEndian \
 //({ \
 //    BOOL flag = NO; \
@@ -97,11 +99,6 @@
         self.port = port;
         self.readQueue = dispatch_queue_create("Socket readQueue", DISPATCH_QUEUE_SERIAL);
         self.writeQueue = dispatch_queue_create("Socket writeQueue", DISPATCH_QUEUE_SERIAL);
-        if (NSHostByteOrder() == NS_BigEndian) {
-            NSLog(@"当前是大端模式");
-        } else {
-            NSLog(@"当前是小端模式");
-        }
     }
     return self;
 }
@@ -137,6 +134,16 @@
 
 
 }
+- (void)send:(const void *)data length:(int16_t)len {
+
+    if (self.writeStream.hasSpaceAvailable) {
+        Packet* packet = packet_init(data, len);
+        void *buffer = NULL;
+        packet_pack(&buffer, packet);
+        NSInteger writeLen = [self.writeStream write:buffer maxLength:packet->packetlen];
+        NSLog(@"写入: %ld", writeLen);
+    }
+}
 #pragma mark - NSStreamDelegate
 - (void)stream:(NSStream *)aStream handleEvent:(NSStreamEvent)eventCode {
     if (self.readStream == aStream) {
@@ -158,12 +165,12 @@
     switch (eventCode) {
         case NSStreamEventOpenCompleted:
         {
-            NSLog(@"ReadStream NSStreamEventOpenCompleted");
+//            NSLog(@"ReadStream NSStreamEventOpenCompleted");
             break;
         }
         case NSStreamEventHasBytesAvailable:
         {
-            NSLog(@"ReadStream NSStreamEventHasBytesAvailable");
+//            NSLog(@"ReadStream NSStreamEventHasBytesAvailable");
             uint8 buffer[1024];
             memset(buffer, 0, 1024);
             NSInteger len = [self.readStream read:buffer maxLength:1024];
@@ -174,16 +181,17 @@
                 // 取出 数据长度
                 memcpy(&dataLen, buffer + 2, 2);
                 // 服务器传输数据 为 大端 网络字节序, 当设备为 小端字节序 则需要将大端转为小端
-                if (!(NSHostByteOrder() == NS_BigEndian)) { dataLen = NSSwapBigShortToHost(dataLen); }
+                dataLen = NSSwapBigShortToHost(dataLen);
                 // 读取数据内容
-                uint32 checksum = 0;
+                int32_t checksum = 0;
                 memcpy(&checksum, buffer + 4, 4);
-                if (!(NSHostByteOrder() == NS_BigEndian)) { checksum = NSSwapBigIntToHost(checksum); }
-                char contentBuffer[dataLen];
-                memcpy(contentBuffer, buffer + 8, dataLen+1);
+                checksum = NSSwapBigIntToHost(checksum);
+                char contentBuffer[dataLen - 8];
+                memcpy(contentBuffer, buffer + 8, dataLen - 8);
                 uint32 verifyChecksum = (uint32)adler32(1, (const void *)contentBuffer, dataLen);
                 if (verifyChecksum == checksum) {
-                    NSLog(@"数据校验成功 content: %@", [NSString stringWithCString:contentBuffer encoding:NSUTF8StringEncoding]);
+                    NSString *content = [[NSString alloc] initWithData:[NSData dataWithBytes:contentBuffer length:dataLen - 8] encoding:NSUTF8StringEncoding];
+                    NSLog(@"数据校验成功 content: %@", content);
                 } else {
                     NSLog(@"数据校验失败");
                 }
@@ -192,17 +200,17 @@
         }
         case NSStreamEventHasSpaceAvailable:
         {
-            NSLog(@"ReadStream NSStreamEventHasSpaceAvailable");
+//            NSLog(@"ReadStream NSStreamEventHasSpaceAvailable");
             break;
         }
         case NSStreamEventErrorOccurred:
         {
-            NSLog(@"ReadStream NSStreamEventErrorOccurred");
+//            NSLog(@"ReadStream NSStreamEventErrorOccurred");
             break;
         }
         case NSStreamEventEndEncountered:
         {
-            NSLog(@"ReadStream NSStreamEventEndEncountered");
+//            NSLog(@"ReadStream NSStreamEventEndEncountered");
             break;
         }
         default:
@@ -213,35 +221,35 @@
     switch (eventCode) {
         case NSStreamEventOpenCompleted:
         {
-            NSLog(@"WriteStream NSStreamEventOpenCompleted");
+//            NSLog(@"WriteStream NSStreamEventOpenCompleted");
             break;
         }
         case NSStreamEventHasBytesAvailable:
         {
-            NSLog(@"WriteStream NSStreamEventHasBytesAvailable");
+//            NSLog(@"WriteStream NSStreamEventHasBytesAvailable");
             break;
         }
         case NSStreamEventHasSpaceAvailable:
         {
-            NSLog(@"WriteStream NSStreamEventHasSpaceAvailable");
-            NSData *data = [self DataForAuthreq];
-            NSInteger len = [self.writeStream write:data.bytes maxLength:data.length];
-            NSLog(@"写入: %ld", len);
-            len = [self.writeStream write:data.bytes maxLength:data.length];
-            NSLog(@"写入: %ld", len);
-            len = [self.writeStream write:data.bytes maxLength:data.length];
-            NSLog(@"写入: %ld", len);
-            sleep(5);
+//            NSLog(@"WriteStream NSStreamEventHasSpaceAvailable");
+//            NSData *data = [self DataForAuthreq];
+//            NSInteger len = [self.writeStream write:data.bytes maxLength:data.length];
+//            NSLog(@"写入: %ld", len);
+//            len = [self.writeStream write:data.bytes maxLength:data.length];
+//            NSLog(@"写入: %ld", len);
+//            len = [self.writeStream write:data.bytes maxLength:data.length];
+//            NSLog(@"写入: %ld", len);
+//            sleep(5);
             break;
         }
         case NSStreamEventErrorOccurred:
         {
-            NSLog(@"WriteStream NSStreamEventErrorOccurred");
+//            NSLog(@"WriteStream NSStreamEventErrorOccurred");
             break;
         }
         case NSStreamEventEndEncountered:
         {
-            NSLog(@"WriteStream NSStreamEventEndEncountered");
+//            NSLog(@"WriteStream NSStreamEventEndEncountered");
             break;
         }
         default:
