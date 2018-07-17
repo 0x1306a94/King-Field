@@ -10,129 +10,137 @@
 
 #import <CFNetwork/CFNetwork.h>
 #import <zlib.h>
+#import <sys/types.h>
+#import <sys/sysctl.h>
+#import <pthread.h>
 
 #import "Packet.h"
-//#define isBigEndian \
-//({ \
-//    BOOL flag = NO; \
-//    int a = 0x1234; \
-//    flag = (*(char *)&a == 0x12); \
-//    flag; \
-//})
-
-/**
- *  @brief 64位数据高度和低地址的交换
- *
- *  @param A 值
- *
- *  @return 返回结果
- */
-
-#define BigSwapLittle64(A)      (A) = ((((uint64)(A) & 0xff00000000000000) >> 56) | \
-(((uint64)(A) & 0x00ff000000000000) >> 40) | \
-(((uint64)(A) & 0x0000ff0000000000) >> 24) | \
-(((uint64)(A) & 0x000000ff00000000) >> 8) | \
-(((uint64)(A) & 0x00000000ff000000) << 8) | \
-(((uint64)(A) & 0x0000000000ff0000) << 24) | \
-(((uint64)(A) & 0x000000000000ff00) << 40) | \
-(((uint64)(A) & 0x00000000000000ff) << 56))
-
-/**
- *  @brief 32位数据高度和低地址的交换
- *
- *  @param A 值
- *
- *  @return 返回结果
- */
-
-#define BigSwapLittle32(A)      (A) = ((((uint32)(A) & 0xff000000) >> 24) | \
-(((uint32)(A) & 0x00ff0000) >> 8) | \
-(((uint32)(A) & 0x0000ff00) << 8) | \
-(((uint32)(A) & 0x000000ff) << 24))
-
-/**
- *  @brief 16位数据高度和低地址的交换
- *
- *  @param A 值
- *
- *  @return  返回结果
- */
-
-#define BigSwapLittle16(A)      (A) = ((((uint16)(A) & 0xff00) >> 8) | \
-(((uint16)(A) & 0x00ff) << 8))
 
 
-//#define MOD 65521
-//#define MAX 5552
-//
-//unsigned long adler32(unsigned char *buf, size_t len)
-//{
-//    unsigned long a = 1, b = 0;
-//    size_t n;
-//
-//    while (len) {
-//        n = len > MAX ? MAX : len;
-//        len -= n;
-//        do {
-//            a += *buf++;
-//            b += a;
-//        } while (--n);
-//        a %= MOD;
-//        b %= MOD;
-//    }
-//    return a | (b << 16);
-//}
+static struct {
+    pthread_t thread;
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+    CFRunLoopRef runloop;
+} controller;
+
+static void *controller_main(void *info)
+{
+    pthread_setname_np("me.kinghub.socket.controller");
+
+    pthread_mutex_lock(&controller.mutex);
+    controller.runloop = CFRunLoopGetCurrent();
+    pthread_mutex_unlock(&controller.mutex);
+    pthread_cond_signal(&controller.cond);
+
+    CFRunLoopSourceContext context;
+    bzero(&context, sizeof(context));
+
+    CFRunLoopSourceRef source = CFRunLoopSourceCreate(kCFAllocatorDefault, 0, &context);
+    CFRunLoopAddSource(controller.runloop, source, kCFRunLoopDefaultMode);
+
+    CFRunLoopRun();
+
+    CFRunLoopRemoveSource(controller.runloop, source, kCFRunLoopDefaultMode);
+    CFRelease(source);
+
+    pthread_mutex_destroy(&controller.mutex);
+    pthread_cond_destroy(&controller.cond);
+
+    return NULL;
+}
+
+static CFRunLoopRef controller_get_runloop()
+{
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        pthread_mutex_init(&controller.mutex, NULL);
+        pthread_cond_init(&controller.cond, NULL);
+        controller.runloop = NULL;
+
+        pthread_create(&controller.thread, NULL, controller_main, NULL);
+
+        pthread_mutex_lock(&controller.mutex);
+        if (controller.runloop == NULL) {
+            pthread_cond_wait(&controller.cond, &controller.mutex);
+        }
+        pthread_mutex_unlock(&controller.mutex);
+    });
+
+    return controller.runloop;
+}
 
 @interface Socket ()<NSStreamDelegate>
 @property (nonatomic, strong) NSInputStream *readStream;
 @property (nonatomic, strong) NSOutputStream *writeStream;
-@property (nonatomic, strong) dispatch_queue_t readQueue;
-@property (nonatomic, strong) dispatch_queue_t writeQueue;
 @property (nonatomic, assign) uint32 port;
 @property (nonatomic, copy) NSString *host;
 @end
 
 @implementation Socket
+- (void)dealloc {
+    [self closeReadStream];
+    [self closeWriteStream];
+#if DEBUG
+    NSLog(@"[%@ dealloc]", NSStringFromClass(self.class));
+#endif
+}
 - (instancetype)initWithHost:(NSString *)host port:(uint32)port {
     if (self == [super init]) {
         self.host = host.copy;
         self.port = port;
-        self.readQueue = dispatch_queue_create("Socket readQueue", DISPATCH_QUEUE_SERIAL);
-        self.writeQueue = dispatch_queue_create("Socket writeQueue", DISPATCH_QUEUE_SERIAL);
     }
     return self;
 }
 
 - (void)open {
 
-    CFReadStreamRef readStream;
-    CFWriteStreamRef writeStream;
-    CFStreamCreatePairWithSocketToHost(kCFAllocatorDefault,
-                                       (__bridge CFStringRef)self.host,
-                                       self.port,
-                                       &readStream,
-                                       &writeStream);
+    NSInputStream *readStream = nil;
+    NSOutputStream *writeStream = nil;
+    [NSStream getStreamsToHostWithName:self.host
+                                  port:self.port
+                           inputStream:&readStream
+                          outputStream:&writeStream];
+
     if (readStream && writeStream) {
-        self.readStream = CFBridgingRelease(readStream);
-        self.writeStream = CFBridgingRelease(writeStream);
+        self.readStream = readStream;
+        self.writeStream = writeStream;
         self.readStream.delegate = self;
         self.writeStream.delegate = self;
 
-        dispatch_async(self.readQueue, ^{
-            [self.readStream scheduleInRunLoop:[NSRunLoop currentRunLoop] forMode:NSDefaultRunLoopMode];
-            [self.readStream open];
-            [[NSRunLoop currentRunLoop] run];
-        });
-
-        dispatch_async(self.writeQueue, ^{
-            [self.writeStream scheduleInRunLoop:[NSRunLoop currentRunLoop] forMode:NSDefaultRunLoopMode];
-            [self.writeStream open];
-            [[NSRunLoop currentRunLoop] run];
-        });
-
+        [self openReadStream];
+        [self openWriteStream];
     }
+}
+- (void)openReadStream {
+    if (!self.readStream) return;
+    CFReadStreamRef readStream = (__bridge CFReadStreamRef)self.readStream;
+    CFReadStreamScheduleWithRunLoop(readStream, controller_get_runloop(), kCFRunLoopDefaultMode);
+    CFReadStreamOpen(readStream);
+}
 
+- (void)openWriteStream {
+    if (!self.writeStream) return;
+    CFWriteStreamRef writeStream = (__bridge CFWriteStreamRef)self.writeStream;
+    CFWriteStreamScheduleWithRunLoop(writeStream, controller_get_runloop(), kCFRunLoopDefaultMode);
+    CFWriteStreamOpen(writeStream);
+}
+- (void)closeReadStream {
+    if (!self.readStream) return;
+    CFReadStreamRef readStream = (__bridge CFReadStreamRef)self.readStream;
+    CFReadStreamUnscheduleFromRunLoop(readStream, controller_get_runloop(), kCFRunLoopDefaultMode);
+    CFReadStreamClose(readStream);
+    self.readStream.delegate = nil;
+    self.readStream = nil;
+}
 
+- (void)closeWriteStream {
+    if (!self.writeStream) return;
+    CFWriteStreamRef writeStream = (__bridge CFWriteStreamRef)self.writeStream;
+    CFWriteStreamUnscheduleFromRunLoop(writeStream, controller_get_runloop(), kCFRunLoopDefaultMode);
+    CFWriteStreamClose(writeStream);
+    self.writeStream.delegate = nil;
+    self.writeStream = nil;
 }
 - (void)send:(const void *)data length:(int16_t)len {
 
@@ -146,6 +154,9 @@
 }
 #pragma mark - NSStreamDelegate
 - (void)stream:(NSStream *)aStream handleEvent:(NSStreamEvent)eventCode {
+    if (eventCode == NSStreamEventErrorOccurred) {
+        NSLog(@"%@", aStream.streamError);
+    }
     if (self.readStream == aStream) {
         [self handleReadStreamWithEvent:eventCode];
     } else {

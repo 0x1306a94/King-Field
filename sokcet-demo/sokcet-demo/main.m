@@ -31,7 +31,7 @@ int main(int argc, const char * argv[]) {
     NSLog(@"%@", str);
 
     dispatch_async(dispatch_get_global_queue(0, 0), ^{
-        static Socket *socket = nil;
+        Socket *socket = nil;
         socket = [[Socket alloc] initWithHost:@"127.0.0.1" port:8800];
         NSLog(@"start open....");
         [socket open];
