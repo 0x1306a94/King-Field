@@ -140,24 +140,24 @@ func handleConn(conn net.Conn) {
 		fmt.Println(conn.RemoteAddr().String() + " 断开")
 	}()
 
-	//go func() {
-	//	for {
-	//		var packet Packet
-	//		packet.Version[0] = 'V'
-	//		packet.Version[1] = '1'
-	//		// packet.Data = []byte("现在时间是:" + time.Now().Format("2006-01-02 15:04:05"))
-	//		packet.Data = []byte("hello")
-	//		packet.Length = int16(len(packet.Data))
-	//		packet.Checksum = packet.calcChecksum()
-	//		buf := new(bytes.Buffer)
-	//		packet.Pack(buf)
-	//		if _, err := conn.Write(buf.Bytes()); err != nil {
-	//			return
-	//		}
-	//		fmt.Println("发送:", conn.RemoteAddr().String()+"  ", packet.String())
-	//		time.Sleep(time.Second * 2)
-	//	}
-	//}()
+	go func() {
+		for {
+			var packet Packet
+			packet.Version[0] = 'V'
+			packet.Version[1] = '1'
+			packet.Data = []byte("现在时间是:" + time.Now().Format("2006-01-02 15:04:05"))
+			//packet.Data = []byte("hello")
+			packet.DataLength = int16(len(packet.Data))
+			packet.Checksum = packet.calcChecksum()
+			buf := new(bytes.Buffer)
+			packet.Pack(buf)
+			if _, err := conn.Write(buf.Bytes()); err != nil {
+				return
+			}
+			fmt.Println("发送:", conn.RemoteAddr().String()+"  ", packet.String())
+			time.Sleep(time.Second * 2)
+		}
+	}()
 	// 创建Scanner，分析buf数据流(r io.Reader，换成net.Conn对象就是处理tcp数据流，自己连数据都不需要去收取)
 	scanner := bufio.NewScanner(conn)
 	// 数据的分离规则，根据协议自定义

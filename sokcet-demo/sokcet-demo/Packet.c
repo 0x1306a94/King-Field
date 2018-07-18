@@ -10,6 +10,7 @@
 
 #include <stdio.h>
 #include <zlib.h>
+#include <string.h>
 #include <libkern/OSByteOrder.h>
 
 // 固定头 V1 (2字节) + data length (2字节 数据长度) + checksum (4字节 adler32 校验算法值) + data

@@ -9,36 +9,50 @@
 #import <Foundation/Foundation.h>
 #import "Socket.h"
 #import "Packet.h"
+#import "SocketPacket.h"
+
+@interface SocketHandler : NSObject<SocketDelegate>
+
+@end
+
+
+@implementation SocketHandler
+- (void)sokcet:(Socket *)sokcet didConnectionHost:(NSString *)host port:(uint32)port {
+    NSLog(@"connection to %@:%d", host, port);
+}
+- (void)socketDisconnection:(Socket *)sokcet {
+    NSLog(@"disconnection");
+}
+- (void)socketConnectionTimeout:(Socket *)sokcet {
+    NSLog(@"connection timeout");
+}
+- (void)sokcet:(Socket *)sokcet didError:(NSError *)error {
+    NSLog(@"socket error: %@", error);
+}
+- (void)sokcet:(Socket *)sokcet didReceivePacket:(SocketPacket *)packet {
+    NSLog(@"%@", [packet debugDescription]);
+    if ([packet verifyPacket]) {
+        NSLog(@"数据校验成功");
+    } else {
+        NSLog(@"数据校验失败");
+    }
+}
+@end
 
 int main(int argc, const char * argv[]) {
 
-
-
-    NSString *str = @"你大爷的,总算调通了!妈蛋的";
-    NSData *data = [str dataUsingEncoding:NSUTF8StringEncoding];
-
-    Packet *packet = packet_init(data.bytes, data.length);
-    void *buffer = NULL;
-    packet_pack(&buffer, packet);
-    data = [NSData dataWithBytes:packet->data length:packet->datalen];
-    str = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-    NSLog(@"%@", str);
-
-    Packet *tmp = NULL;
-    packet_upack(&tmp, buffer);
-    data = [NSData dataWithBytes:tmp->data length:tmp->datalen];
-    str = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-    NSLog(@"%@", str);
-
     dispatch_async(dispatch_get_global_queue(0, 0), ^{
-        Socket *socket = nil;
-        socket = [[Socket alloc] initWithHost:@"127.0.0.1" port:8800];
-        NSLog(@"start open....");
-        [socket open];
-        sleep(5);
+        static Socket *socket = nil;
+        static SocketHandler *handelr = nil;
+        handelr = [SocketHandler new];
+        socket = [[Socket alloc] initWithHost:@"localhost" port:8800];
+        NSLog(@"start connection....");
+        socket.delegate = handelr;
+        [socket connection];
+        sleep(10);
         NSString *str = @"你大爷的,总算调通了!妈蛋的";
         NSData *data = [str dataUsingEncoding:NSUTF8StringEncoding];
-        [socket send:data.bytes length:data.length];
+        [socket sendData:data];
     });
 
     [[NSRunLoop mainRunLoop] run];

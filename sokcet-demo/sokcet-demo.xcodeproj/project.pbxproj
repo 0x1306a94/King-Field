@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		A42B2A2220FD8E8D00E2F48C /* Packet.c in Sources */ = {isa = PBXBuildFile; fileRef = A42B2A2120FD8E8D00E2F48C /* Packet.c */; };
+		A42B2A2520FEE2E200E2F48C /* SocketPacket.m in Sources */ = {isa = PBXBuildFile; fileRef = A42B2A2420FEE2E200E2F48C /* SocketPacket.m */; };
 		A4E11F8F20B3F2DD00491ADF /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = A4E11F8E20B3F2DD00491ADF /* main.m */; };
 		A4E11F9720B3F3D900491ADF /* Socket.m in Sources */ = {isa = PBXBuildFile; fileRef = A4E11F9620B3F3D900491ADF /* Socket.m */; };
 /* End PBXBuildFile section */
@@ -27,6 +28,8 @@
 /* Begin PBXFileReference section */
 		A42B2A2020FD8BBD00E2F48C /* Packet.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Packet.h; sourceTree = "<group>"; };
 		A42B2A2120FD8E8D00E2F48C /* Packet.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Packet.c; sourceTree = "<group>"; };
+		A42B2A2320FEE2E200E2F48C /* SocketPacket.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SocketPacket.h; sourceTree = "<group>"; };
+		A42B2A2420FEE2E200E2F48C /* SocketPacket.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SocketPacket.m; sourceTree = "<group>"; };
 		A4E11F8B20B3F2DD00491ADF /* sokcet-demo */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "sokcet-demo"; sourceTree = BUILT_PRODUCTS_DIR; };
 		A4E11F8E20B3F2DD00491ADF /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		A4E11F9520B3F3D900491ADF /* Socket.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Socket.h; sourceTree = "<group>"; };
@@ -68,6 +71,8 @@
 				A4E11F9620B3F3D900491ADF /* Socket.m */,
 				A42B2A2020FD8BBD00E2F48C /* Packet.h */,
 				A42B2A2120FD8E8D00E2F48C /* Packet.c */,
+				A42B2A2320FEE2E200E2F48C /* SocketPacket.h */,
+				A42B2A2420FEE2E200E2F48C /* SocketPacket.m */,
 			);
 			path = "sokcet-demo";
 			sourceTree = "<group>";
@@ -130,6 +135,7 @@
 			files = (
 				A42B2A2220FD8E8D00E2F48C /* Packet.c in Sources */,
 				A4E11F9720B3F3D900491ADF /* Socket.m in Sources */,
+				A42B2A2520FEE2E200E2F48C /* SocketPacket.m in Sources */,
 				A4E11F8F20B3F2DD00491ADF /* main.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
